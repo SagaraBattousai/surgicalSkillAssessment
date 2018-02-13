@@ -1,25 +1,35 @@
 import numpy as np
 import cv2
 
-imgG = cv2.imread('LennaComputerVision.png', 0)
 
-cv2.imwrite("LennaGrey.png", imgG)
+def main():
+
+    imgG = cv2.imread('LennaComputerVision.png', 0)
+
+    cv2.imwrite("LennaGrey.png", imgG)
 
 
-cap = cv2.VideoCapture("VideoSequence.avi")
+    cap = cv2.VideoCapture("VideoSequence.avi")
 
 
-fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
 
-out = cv2.VideoWriter('output.avi', fourcc, 20.0, (int(cap.get(3)), int(cap.get(4))))
+    out = cv2.VideoWriter('man.avi', fourcc, 20.0, (int(cap.get(3)), int(cap.get(4))))
 
-while(cap.isOpened()):
-    ret, frame = cap.read()
 
-    if ret:
-        frame = cv2.flip(frame, 0)
+    i = 100
 
-        out.write(frame)
+    while(cap.isOpened() and i >= 0):
+        ret, frame = cap.read()
 
-cap.release()
-out.release()
+        if ret:
+            frame = cv2.flip(frame, 0)
+
+            out.write(frame)
+        i -= 1
+
+    cap.release()
+    out.release()
+
+
+main()
