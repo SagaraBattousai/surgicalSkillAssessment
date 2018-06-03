@@ -17,9 +17,9 @@ IMAGE_WIDTH = 320
 
 IMAGE_HEIGHT = 180
 
-CHECKPOINT_DIR = "box_checkpoints"
+CHECKPOINT_DIR = "abox_checkpoints"
 
-PREDICTION_CHECKPOINT_DIR = "box_checkpoints"
+PREDICTION_CHECKPOINT_DIR = "abox_checkpoints"
 
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 10000
 
@@ -27,7 +27,7 @@ NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1000
 
 EPOCH_SIZE = 750
 
-BATCH_SIZE = 50
+BATCH_SIZE = 128
 
 SHUFFLE_BUFFER_SIZE = BATCH_SIZE
 
@@ -36,6 +36,8 @@ EPOCH_PER_DECAY = 180.0
 INITIAL_LEARNING_RATE = 0.1
 
 LEARNING_RATE_DECAY = 0.1
+
+unzip = lambda z: list(zip(*z))
 
 def cnn_model_fn(features, labels, mode):
     #Input layer

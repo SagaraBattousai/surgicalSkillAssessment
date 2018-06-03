@@ -10,7 +10,7 @@ import os
 from matchers import Boundary
 from functools import partial
 
-import cnn_box_ainput as cbi
+import cnn_box_minput as cbi
 
 TO_FLOAT32 = lambda a: a.astype(np.float32)
 

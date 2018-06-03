@@ -17,9 +17,9 @@ IMAGE_WIDTH = 320
 
 IMAGE_HEIGHT = 180
 
-CHECKPOINT_DIR = "box_checkpoints"
+CHECKPOINT_DIR = "mbox_checkpoints"
 
-PREDICTION_CHECKPOINT_DIR = "box_checkpoints"
+PREDICTION_CHECKPOINT_DIR = "mbox_checkpoints"
 
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 10000
 
@@ -27,95 +27,65 @@ NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1000
 
 EPOCH_SIZE = 750
 
-BATCH_SIZE = 50
+BATCH_SIZE = 128
 
 SHUFFLE_BUFFER_SIZE = BATCH_SIZE
 
-EPOCH_PER_DECAY = 180.0
+EPOCH_PER_DECAY = 384.0
 
-INITIAL_LEARNING_RATE = 0.1
+INITIAL_LEARNING_RATE = 0.001
 
-LEARNING_RATE_DECAY = 0.1
+LEARNING_RATE_DECAY = 0.01
+
+unzip = lambda z: list(zip(*z))
 
 def cnn_model_fn(features, labels, mode):
     #Input layer
-    input_layer = tf.reshape(tf.cast(features, tf.float32), [-1, IMAGE_HEIGHT, IMAGE_WIDTH, 1])
+    input_layer = tf.reshape(tf.cast(features, tf.float32), [-1, 180, 320, 1])
 
-    ##MAYBE ADD VARIABLE SCOPE
-    
     #Convolutional Layer #1
-    conv1 = tf.layers.Conv2D(filters=64,
-                             kernel_size=[5, 5],
-                             padding="same",
-                             activation=tf.nn.relu,
-                             name="conv1")
-
-    conv1_out = conv1(input_layer)
+    conv1 = tf.layers.conv2d(
+            inputs=input_layer,
+            filters=32,
+            kernel_size=[5, 5],
+            padding="same",
+            activation=tf.nn.relu)
 
     #Pooling Layer #1
-    max_pool_quarter = tf.layers.MaxPooling2D(pool_size=[4, 4],
-                                              strides=4,
-                                              name="quarter_pool")
-
-    pool1_out = max_pool_quarter(conv1_out)
-
-    #Normalization Layer #1
-    # norm1 = tf.nn.lrn(pool1_out, 
-    #                   depth_radius=4,
-    #                   bias=1.0,
-    #                   alpha=0.001 / 9.0,
-    #                   beta=0.75,
-    #                   name="norm1")
+    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[4, 4],
+            strides=4)
 
     #Convolutional Layer #2 and Pooling Layer #2
-    conv2 = tf.layers.Conv2D(filters=64,
-                             kernel_size=[5, 5],
-                             padding="same",
-                             activation=tf.nn.relu,
-                             name="conv2")
+    conv2 = tf.layers.conv2d(
+            inputs=pool1,
+            filters=64,
+            kernel_size=[5, 5],
+            padding="same",
+            activation=tf.nn.relu)
 
-    conv2_out = conv2(pool1_out)
-    
-    #Normalization Layer #2
-    # norm2 = tf.nn.lrn(conv2_out, 
-    #                   depth_radius=4,
-    #                   bias=1.0,
-    #                   alpha=0.001 / 9.0,
-    #                   beta=0.75,
-    #                   name="norm2")
+    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[5, 5],
+            strides=5)
 
-
-    #Pooling Layer #2
-    max_pool_fifth = tf.layers.MaxPooling2D(pool_size=[5, 5],
-                                             strides=5,
-                                             name="fifth_pool")
-
-    pool2_out = max_pool_fifth(conv2_out)
 
     # Dense Layer
-    flattend_out = tf.reshape(pool2_out, [-1, 16 * 9 * 64])
+    pool2_flat = tf.reshape(pool2, [-1, 16 * 9 * 64])
 
-    dense = tf.layers.Dense(units=1024,
-                            activation=tf.nn.relu,
-                            name="dense")
+    dense = tf.layers.dense(inputs=pool2_flat, units=1024,
+            activation=tf.nn.relu)
 
-    dense_output = dense(flattend_out)
+    dropout = tf.layers.dropout(inputs=dense, rate=0.4,
+            training=mode == tf.estimator.ModeKeys.TRAIN)
 
-    dropout = tf.layers.dropout(inputs=dense_output, rate=0.4,
-        training=mode == tf.estimator.ModeKeys.TRAIN,
-        name="dropout")
 
-    # final Layer
-    final = tf.layers.Dense(units=8, name="output_layer")
+    # Logits Layer
+    logits_layer = tf.layers.dense(inputs=dropout, units=8)
 
-    final_output = final(dropout)
-
-    output = tf.reshape(final_output, [-1, 1, 8])
+    logits = tf.reshape(logits_layer, [-1, 1, 8])
 
     pred_box1, pred_box2 = tf.split(
             tf.reshape(
                 tf.cast(
-                    output, tf.int64)
+                    logits, tf.int64)
                 , [-1,4,2])
             , [1,1], axis=2)
 
@@ -124,23 +94,22 @@ def cnn_model_fn(features, labels, mode):
     predictions = {
             "hand1": pred_box1,
             "hand2": pred_box2,
-            "output": output
+            "output": logits
         }
 
     if mode == tf.estimator.ModeKeys.PREDICT:
-      return tf.estimator.EstimatorSpec(mode=mode,
-          predictions=predictions)
+        return tf.estimator.EstimatorSpec(mode=mode,
+                predictions=predictions)
 
-      #Calculate Loss (for both TRAIN and EVAL mode)
-    true_box1, true_box2 = tf.split(tf.reshape(labels, [-1,4,2]), [1,1], axis=2)
+    #Calculate Loss (for both TRAIN and EVAL mode)
 
+    loss = tf.losses.absolute_difference(labels, logits)
 
-    loss = tf.losses.absolute_difference(labels, output)
 
     #Configure the Training Op (for TRAIN mode)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-        
+
         batches_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN / BATCH_SIZE
         decay_steps = int(batches_per_epoch * EPOCH_PER_DECAY)
 
@@ -151,23 +120,25 @@ def cnn_model_fn(features, labels, mode):
                                     LEARNING_RATE_DECAY,
                                     staircase=True)
 
-        
-        optimizer = tf.train.AdamOptimizer(
-          learning_rate=learning_rate)
-        
-        # optimizer = tf.train.GradientDescentOptimizer(
-        #   learning_rate=learning_rate)
+        optimizer = tf.train.GradientDescentOptimizer(
+                learning_rate=learning_rate)#0.001)
 
         train_op = optimizer.minimize(
-          loss=loss,
-          global_step=tf.train.get_or_create_global_step())
-
+                loss=loss,
+                global_step=tf.train.get_global_step())
+        
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss,
-          train_op=train_op)
+                train_op=train_op)
+    
+    true_box1, true_box2 = tf.split(
+            tf.reshape(
+                tf.cast(
+                    labels, tf.int64)
+                , [-1,4,2])
+            , [1,1], axis=2)
 
       # Add evaluation metrics (for EVAL mode)
     eval_metric_ops = {
-        #    "l2_hand1": tf.nn.l2_loss((true_box1, pred_box1), name="p"),
         "rmse_hand1": tf.metrics.root_mean_squared_error(
           labels=true_box1,
           predictions=pred_box1,
@@ -219,7 +190,6 @@ def rotate_label_90(box,
 
     canvas_rotation = tf.reverse(cent, axis=[0]) - cent
 
-    #why the -1????
     step1 = tf.matmul(rot, points)
 
     step2 = tf.add(adder, step1)
