@@ -1,7 +1,8 @@
 *.avi
 *.jpg
-
+*.txt
 *.swp
+*.npz
 HandTracking/data
 __pycache__
 HandTracking/__pycache__
@@ -10,3 +11,5 @@ HandTracking/abox_checkpoints/
 HandTracking/box_checkpoints02062018_adam/
 HandTracking/mbox_checkpoints/
 HandTracking/mdecbox_checkpoints/
+HandTracking/surgical_checkpoints/
+HandTracking/old/
