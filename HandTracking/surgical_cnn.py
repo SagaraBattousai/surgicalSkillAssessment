@@ -6,19 +6,23 @@ import argparse
 import cv2
 import cvTools
 import os
+import importlib
+import threading
+
+import surgical_cnn_input as sci
 
 from matchers import Boundary
 from functools import partial
 
-import surgical_cnn_input as sci
+model = None
 
 TO_FLOAT32 = lambda a: a.astype(np.float32)
 
 REQUIRED_ASPECT_RATION = "16:9"
 
-IMAGE_TO_PREDICT = 'data\\images\\frame_3854.jpg'
+IMAGE_TO_PREDICT = 'data' + os.sep + 'images' + os.sep + 'frame_3854.jpg'
 
-DATA_PREDICT_LOCATION = 'data\\images'
+DATA_PREDICT_LOCATION = 'data' + os.sep + 'images'
 
 class InputDataError(Exception):
     pass
@@ -37,46 +41,77 @@ class WrongAspectRatio(InputDataError):
                 width,
                 height
                 )
-def _parse_image(filename, standardise=False):
-    image_string = tf.read_file(filename)#image_filename)
 
-    decoded_image =tf.image.decode_image(image_string, channels=1) 
+class BadInputModule(Exception):
+    
+    def __init__(self, className):
+        self.className = className
 
-    if standardise:
+    def message(self):
+        return "Input Module {} Error: Maybe The Model Is Incorrect Or The\
+                CheckPoints Are Bad?\nIs The InputFunctionCorrect?".format(
+                self.className)
 
-        float_image = tf.image.per_image_standardization(decoded_image)
 
-        float_image.set_shape([sci.IMAGE_HEIGHT, sci.IMAGE_WIDTH, 1])
+class NoInputModule(BadInputModule):
 
-    else:
-        decode_image = tf.cast(decoded_image, tf.float32)
-        decoded_image.set_shape([sci.IMAGE_HEIGHT, sci.IMAGE_WIDTH, 1])
-        
-        float_image = decoded_image
+    def message(self):
+        return "No Input Module supplied: Perhaps The Model Is Incorrect Or\
+                it Failed To Load?"
 
-    return float_image
-
-def predictionData(filenames, standardise=False):
+def predictionData(filenames):
 
     files = tf.constant(filenames)
     dataset = tf.data.Dataset.from_tensor_slices((files))
+    
+    if model is None:
+        raise NoInputModule
 
-    parse_fn = partial(_parse_image, standardise=standardise)
-
-    dataset = dataset.map(parse_fn)
+    dataset = dataset.map(sci._decode_images)
     dataset = dataset.repeat(1)
     dataset = dataset.batch(1)
 
     return dataset
 
+def _decode_live(img):
+    float_image = tf.image.per_image_standardization(img)
+    float_image.set_shape([sci.IMAGE_HEIGHT, sci.IMAGE_WIDTH, 1])
+
+    return float_image
+
+def decode_live_images(images):
+
+    imgs = tf.constant(images)
+    dataset = tf.data.Dataset.from_tensor_slices((imgs))
+    
+    if model is None:
+        raise NoInputModule
+
+    dataset = dataset.map(_decode_live)
+    dataset = dataset.repeat(1)
+    dataset = dataset.batch(1)
+
+    return dataset
+
+
+
 def predict(input_fn):
 
-    cnn = tf.estimator.Estimator(model_fn=sci.cnn_model_fn,
-      model_dir=sci.PREDICTION_CHECKPOINT_DIR)
+    cnn = tf.estimator.Estimator(model_fn=model.cnn_model_fn,
+      model_dir=model.CHECKPOINT_DIR)
 
     predictions = cnn.predict(input_fn=input_fn)
 
     return predictions
+
+def predictFromFilenames(image_filenames):
+
+    if not isinstance(image_filenames, (tuple, list)):
+        image_filenames = [image_filenames]
+
+    input_fn = partial(predictionData, image_filenames)
+    
+    return predict(input_fn)
 
 def overlayBox(image, prediction, copy=False):
 
@@ -89,10 +124,13 @@ def overlayBox(image, prediction, copy=False):
 
     h2, w2, x2, y2 = hand2
 
-    box1 = Boundary.fromRect(x1, y1, w1, h1)
-        
-    box2 = Boundary.fromRect(x2, y2, w2, h2)
-    
+    if x1 < x2:
+        box1 = Boundary.fromRect(x1, y1, w1, h1)
+        box2 = Boundary.fromRect(x2, y2, w2, h2)
+    else:
+        box2 = Boundary.fromRect(x1, y1, w1, h1)
+        box1 = Boundary.fromRect(x2, y2, w2, h2)
+
     img = image.copy() if copy else image
 
     box1.drawBoundary(img, colour=(255,255,0), width=2)
@@ -101,57 +139,97 @@ def overlayBox(image, prediction, copy=False):
         
     return img
 
-def cmdline_predict(image_filenames, standardise=False):
-
+###Must NOT be concureently run with other calls to tensorflow (I think) makes sure to run after other calls and joint before later calls
+def savePredictedSequence(image_filenames):
+    
+    
+    #Justifiable Duplication based off unliklyhood of save feature
+    
     if not isinstance(image_filenames, (tuple, list)):
         image_filenames = [image_filenames]
+
+    predictions = predictFromFilenames(image_filenames)
+
+    imageFromIndex = lambda index:\
+                cv2.imread(image_filenames[index]).astype(np.uint8)
+
+    outputs =   (
+                    (overlayBox(imageFromIndex(i), x), x)
+
+                    for i, x in enumerate(predictions)
+                )
+
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    out = cv2.VideoWriter('predictionOutput.avi', fourcc, 20.0, (320, 180))
+
+    try:
+        for x in outputs:
+            out.write(x[0])
+
+    finally:
+        out.release()
+
+def cmdline_predict(image_filenames, save, asVideo=False, speed=40):
     
-    input_fn = partial(predictionData, image_filenames, standardise=standardise)
-    
-    predictions1 = predict(input_fn)
-
-    outputs = []
-
-    for i, x in enumerate(predictions1):
-    
-        img = cv2.imread(image_filenames[i]).astype(np.uint8)
-        #print(x['output'])
-        
-        outputs.append((overlayBox(img, x), x))
-
-    for x in outputs:
-        cvTools.displayImages(x[0])
-        print(x[1])
-
-##def playSeries(series, f=lambda x : x, speed=30):
-
-def playAsSeries(image_filenames, standardise, speed=40):
-
     if not isinstance(image_filenames, (tuple, list)):
         image_filenames = [image_filenames]
-    
-    input_fn = partial(predictionData, image_filenames, standardise=standardise)
-    
-    predictions1 = predict(input_fn)
 
-    outputs = []
+    predictions = predictFromFilenames(image_filenames)
 
-    for i, x in enumerate(predictions1):
-    
-        img = cv2.imread(image_filenames[i]).astype(np.uint8)
-        #print(x['output'])
+    imageFromIndex = lambda index:\
+                cv2.imread(image_filenames[index]).astype(np.uint8)
+
+    outputs =   (
+                    (overlayBox(imageFromIndex(i), x), x)
+
+                    for i, x in enumerate(predictions)
+                )
+
+    #Called after Tensorflow calls but before displaying to caller so
+    #Thread can run whilst displaying.
+    #Ensure Join before exiting function/catch keyboard interupt to
+    #continue saving!
+    if save:
+        saveThread = threading.Thread(target=savePredictedSequence,
+                kwargs={'image_filenames':image_filenames})
         
-        outputs.append(overlayBox(img, x))
+        saveThread.start()
 
-    cvTools.playSeries(outputs, speed=speed)
+    try:
+        if asVideo:
+            outputImages = list(zip(*outputs))[0]
+            cvTools.playSeries(outputImages, speed=speed)
+        else:
+            for x in outputs:
+                cvTools.displayImages(x[0])
+                print(x[1])
+
+    except KeyboardInterrupt:
+        pass
+
+    if save:
+        saveThread.join()
+    
+
+def cmdline_all(baseDir, start, end, asVideo, speed, save):
+    
+    if end is None:
+        image_names = os.listdir(baseDir)[start:]
+    else:
+        image_names = os.listdir(baseDir)[start:end]
+
+    images = list(map(lambda a: baseDir + os.sep + a, image_names))
+
+    cmdline_predict(images, save, asVideo, speed)
+
 
 def runLive(capture=2):
 
     cap = cv2.VideoCapture(capture)
 
-    widthSet = cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    widthSet = cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 
-    heightSet = cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    heightSet = cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
 
     if not cap.isOpened():
         cap.open()
@@ -163,9 +241,9 @@ def runLive(capture=2):
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            frame = cv2.resize(frame, None, fx=1/4, fy=1/4, interpolation=cv2.INTER_CUBIC)
+            frame = cv2.resize(frame, None, fx=1/2, fy=1/2, interpolation=cv2.INTER_CUBIC)
 
-            input_fn = lambda : tf.data.Dataset.from_tensors(frame)
+            input_fn = partial(decode_live_images, [frame])
 
             prediction = predict(input_fn)
 
@@ -186,23 +264,21 @@ def runLive(capture=2):
         cap.release()
 
 
-        tensor = tf.convert_to_tensor(frame)
-        # dataset = tf.data.Dataset.from_tensors(tensor)
-        # dataset = dataset.repeat(1)#Needed?????
-        k = tf.estimator.inputs.numpy_input_fn(frame.astype(np.uint8), shuffle=False)
+    ##What was this!!!
+        # tensor = tf.convert_to_tensor(frame)
+        # # dataset = tf.data.Dataset.from_tensors(tensor)
+        # # dataset = dataset.repeat(1)#Needed?????
+        # k = tf.estimator.inputs.numpy_input_fn(frame.astype(np.uint8), shuffle=False)
 
-        prediction = predict(k)#lambda : k)
+        # prediction = predict(k)#lambda : k)
 
-        print(prediction)
+        # print(prediction)
 
-        pred = next(prediction)
+        # pred = next(prediction)
 
-        return overlayBox(frame, pred)
+        # return overlayBox(frame, pred)
 
-    cvTools.record_while(predictLiveImage)
-
-
-
+    # cvTools.record_while(predictLiveImage)
 
   
 def main(unsused_argv):
@@ -213,8 +289,8 @@ def main(unsused_argv):
                                         keep_checkpoint_max=10)
     #Create the Estimator
     hand_tracking_regressor = tf.estimator.Estimator(
-            model_fn=sci.cnn_model_fn, 
-            model_dir=sci.CHECKPOINT_DIR,
+            model_fn=model.cnn_model_fn, 
+            model_dir=model.CHECKPOINT_DIR,
             config=checkpointing_config)
 
     #Set up logging for predictions
@@ -247,70 +323,95 @@ def train():
 
 def eval():
     hand_tracking_regressor = tf.estimator.Estimator(
-            model_fn=sci.cnn_model_fn, 
+            model_fn=model.cnn_model_fn, 
             model_dir=sci.CHECKPOINT_DIR)
     
     eval_results = hand_tracking_regressor.evaluate(input_fn=sci.get_eval_data)
 
     print(eval_results)
 
-def getAll(baseDir):
-    image_names = os.listdir(baseDir)[:2000]
 
-    return list(map(lambda a: baseDir + "\\" + a, image_names))
+def import_model(model_module):
+    
+    try:
+        global model
+        model = importlib.import_module(model_module)
+    except Exception as e:
+        raise BadInputModule(model_module)
+        raise e
 
 if __name__ == "__main__":
 
+
+    ###Base Parser###
     parser = argparse.ArgumentParser()
 
     parser.set_defaults(func=train)
 
-
     subparsers = parser.add_subparsers(dest="subparser_name")
 
 
-    trainArgs = subparsers.add_parser('train')
+    ##Parent Parser###
+    parent_parser = argparse.ArgumentParser(add_help=False)
 
-    #TODO: CHANGE 
+    parent_parser.add_argument('-m', '--model', nargs='?', default='surgical_cnn_model',
+                        type=import_model)
+
+
+    ###Training Parser###
+    trainArgs = subparsers.add_parser('train', parents=[parent_parser])
+
     trainArgs.set_defaults(func=train)
+    
 
-    evalArgs = subparsers.add_parser('eval')
+    ###Eval Parser###
+    evalArgs = subparsers.add_parser('eval', parents=[parent_parser])
 
     evalArgs.set_defaults(func=eval)
 
-    
-    predictArgs = subparsers.add_parser('predict')
 
-    predictArgs.add_argument('images', nargs='+')
-    
-    predictArgs.add_argument('-s', '--standardise', action='store_true')
+    ###Prediction Parent Parser###
+    prediction_parent_parser = argparse.ArgumentParser(add_help=False)
 
+    prediction_parent_parser.add_argument('-sa', '--save', action='store_true')
+
+    
+    ###Predict Parser###
+    predictArgs = subparsers.add_parser('predict', 
+            parents=[parent_parser, prediction_parent_parser])
+
+    predictArgs.add_argument('images', nargs='*', default=IMAGE_TO_PREDICT)
+    
     predictArgs.set_defaults(func=cmdline_predict)
 
-    
-    predict_allArgs = subparsers.add_parser('all')
+   
+    ###Predict All Parser
+    predict_allArgs = subparsers.add_parser('all', 
+            parents=[parent_parser,prediction_parent_parser])
 
-    predict_allArgs.add_argument('baseDir', nargs='?', default=DATA_PREDICT_LOCATION, type=getAll)
-    
-    predict_allArgs.add_argument('-s', '--standardise', action='store_true')
+    predict_allArgs.add_argument('baseDir', nargs='?', default=DATA_PREDICT_LOCATION)
+
+    predict_allArgs.add_argument('-s', '--start', default=0, type=int)
+
+    predict_allArgs.add_argument('-e', '--end', default=None, type=int)
     
     predict_allArgs.add_argument('-v', '--video', action='store_true')
+    
+    predict_allArgs.add_argument('-sp', '--speed', default=40)
 
-    predict_allArgs.set_defaults(func=cmdline_predict)
+    predict_allArgs.set_defaults(func=cmdline_all)
 
-
-
+    
+    ###Collect args###
     args = parser.parse_args()
 
-
+    ##Run function for given command###
     if args.subparser_name == "predict":
-        args.func(args.images, args.standardise)
+        args.func(args.images, args.save)
     
     elif args.subparser_name == "all":
-        if args.video:
-            playAsSeries(args.baseDir, args.standardise)
-        else:
-            args.func(args.baseDir, args.standardise)
+        args.func(args.baseDir, args.start, args.end, args.video,
+                args.speed, args.save)
 
     else:
       args.func()
