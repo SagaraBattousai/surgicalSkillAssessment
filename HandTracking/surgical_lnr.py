@@ -3,14 +3,11 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 import argparse
-import cv2
-import cvTools
 import os
 
-from matchers import Boundary
 from functools import partial
 
-import surgical_cnn_input as sci
+import surgical_lnr_input as sci
 
 TO_FLOAT32 = lambda a: a.astype(np.float32)
 

@@ -3,15 +3,16 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 import random
+import os
 from functools import partial
 
-TRAINING_INPUTS = "data\\trainImages"
+TRAINING_INPUTS = "data" + os.sep + "trainImages"
 
-TRAINING_LABELS = "data\\trainLabels"
+TRAINING_LABELS = "data" + os.sep + "trainLabels"
 
-EVAL_INPUTS = "data\\evalImages"
+EVAL_INPUTS = "data" + os.sep + "evalImages"
 
-EVAL_LABELS = "data\\evalLabels"
+EVAL_LABELS = "data" + os.sep + "evalLabels"
 
 IMAGE_WIDTH = 320
 
@@ -381,11 +382,13 @@ def setup_data(input_dir, label_dir, examples_to_setup):
     labels_list = []
 
     for i in range(1, examples_to_setup + 1):
-        filenames_list.append('{}\\frame_{}.jpg'.format(input_dir,
+        filenames_list.append('{}{}frame_{}.jpg'.format(input_dir,
+                                                        os.sep,
                                                         i))
     
-        label_name = '{}\\frame_{}.tfrecord'.format(label_dir,
-                                                   i)
+        label_name = '{}{}frame_{}.tfrecord'.format(label_dir,
+                                                    os.sep,
+                                                    i)
         labels_list.append(label_name)
     
     filenames = tf.constant(filenames_list)
