@@ -7,7 +7,7 @@ IMAGE_WIDTH = 320
 
 IMAGE_HEIGHT = 180
 
-CHECKPOINT_DIR = "surgical_lnr_checkpoints"
+CHECKPOINT_DIR = "surgical_lrn_checkpoints"
 
 def cnn_model_fn(features, labels, mode):
     #Input layer
