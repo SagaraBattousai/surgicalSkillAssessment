@@ -7,7 +7,7 @@ IMAGE_WIDTH = 320
 
 IMAGE_HEIGHT = 180
 
-CHECKPOINT_DIR = "surgical_lrn_checkpoints"
+CHECKPOINT_DIR = "tip_checkpoints"
 
 def cnn_model_fn(features, labels, mode):
     #Input layer
@@ -26,32 +26,32 @@ def cnn_model_fn(features, labels, mode):
             strides=4)
 
     #Normalization Layer #1
-    norm1 = tf.nn.lrn(pool1,
-                      depth_radius=4,
-                      bias=1.0,
-                      alpha=0.001 / 9.0,
-                      beta=0.75,
-                      name="norm1")
+    # norm1 = tf.nn.lrn(pool1,
+    #                   depth_radius=4,
+    #                   bias=1.0,
+    #                   alpha=0.001 / 9.0,
+    #                   beta=0.75,
+    #                   name="norm1")
 
     
     #Convolutional Layer #2 and Pooling Layer #2
     
     conv2 = tf.layers.conv2d(
-            inputs=norm1,
+            inputs=pool1,
             filters=64,
             kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu)
 
     #Normalization Layer #2
-    norm2 = tf.nn.lrn(conv2,
-                      depth_radius=4,
-                      bias=1.0,
-                      alpha=0.001 / 9.0,
-                      beta=0.75,
-                      name="norm2")
+    # norm2 = tf.nn.lrn(conv2,
+    #                   depth_radius=4,
+    #                   bias=1.0,
+    #                   alpha=0.001 / 9.0,
+    #                   beta=0.75,
+    #                   name="norm2")
     
-    pool2 = tf.layers.max_pooling2d(inputs=norm2, pool_size=[5, 5],
+    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[5, 5],
             strides=5)
 
 
