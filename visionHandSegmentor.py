@@ -3,7 +3,7 @@ import numpy as np
 import cvTools
 from matchers import *
 
-def segmentHand2(image_name):
+def segmentHand2(image_name, padding=None):
 
     image = cv2.imread(image_name)
     
@@ -13,7 +13,7 @@ def segmentHand2(image_name):
 
     bestCont = gloveCatcher.getLargestContours(hsv)[0]
 
-    tightBoundry = Boundry(cv2.convexHull(bestCont))
+    tightBoundary = Boundary(cv2.convexHull(bestCont))
 
     x, y, w, h = cv2.boundingRect(cv2.convexHull(bestCont))
 
@@ -31,7 +31,15 @@ def segmentHand2(image_name):
     height, width, _ = image.shape
 
     blank = np.zeros((height, width, 1), dtype=np.uint8)
-    tightBoundry.drawBoundry(blank, colour=255, width=-1)
+    tightBoundary.drawBoundary(blank, colour=255, width=-1)
+
+    if padding is not None:
+        tightBoundary.drawBoundary(blank, colour=255, width=padding)
+        h += padding
+        w += padding
+
+    cvTools.displayImages(blank)
+
     pixelpoints = np.transpose(np.nonzero(blank))
 
     # print(pixelpoints.shape)
@@ -53,8 +61,8 @@ def segmentHand2(image_name):
     #       "perimeter", cv2.arcLength(boxCont, True),
     #       "p2", cv2.arcLength(boxCont, False), sep="\n")
 
-    # cvTools.displayImages(hand_image)
-    return tightBoundry.points.shape
+    cvTools.displayImages(hand_image)
+    #return tightBoundary.points.shape
     # cvTools.displayImages(masked, img_a, img_b, blank)
     #cv2.drawContours(img_b, hullCont, -1, (255,255,0), 3)
 
@@ -68,17 +76,17 @@ def segmentHand(image_name, skin=False, display=False):
 
     bestCont = gloveCatcher.getLargestContours(hsv)[0]
 
-    tightBoundry = Boundry(cv2.convexHull(bestCont))
+    tightBoundary = Boundary(cv2.convexHull(bestCont))
 
     x, y, w, h = cv2.boundingRect(bestCont)
 
-    boarderBoundry = Boundry.fromRect(x, y, w, h)
+    boarderBoundary = Boundary.fromRect(x, y, w, h)
 
     height, width, _ = image.shape
 
     blank = np.zeros((height, width, 1), dtype=np.uint8)
 
-    boarderBoundry.drawBoundry(blank, colour=255, width=-1)
+    boarderBoundary.drawBoundary(blank, colour=255, width=-1)
     
     pixelpoints = np.transpose(np.nonzero(blank))
 
