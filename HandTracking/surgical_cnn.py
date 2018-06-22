@@ -3,15 +3,12 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 import argparse
-import cv2
-import cvTools
 import os
 import importlib
 import threading
 
 import surgical_cnn_input as sci
 
-from matchers import Boundary
 from functools import partial
 
 model = None
