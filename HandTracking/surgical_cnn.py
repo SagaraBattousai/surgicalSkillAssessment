@@ -286,7 +286,7 @@ def main(unsused_argv):
     #Checkpoint config
     checkpointing_config = tf.estimator.RunConfig(
                                         save_checkpoints_steps=1000,
-                                        keep_checkpoint_max=10)
+                                        keep_checkpoint_max=5)
     #Create the Estimator
     hand_tracking_regressor = tf.estimator.Estimator(
             model_fn=model.cnn_model_fn, 
