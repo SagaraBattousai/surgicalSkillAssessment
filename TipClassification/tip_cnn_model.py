@@ -3,9 +3,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 
-IMAGE_WIDTH = 320
-
-IMAGE_HEIGHT = 180
+PATCHES_PER_IMAGE = 113
 
 CHECKPOINT_DIR = "tip_checkpoints"
 

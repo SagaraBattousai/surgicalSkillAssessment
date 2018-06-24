@@ -3,16 +3,17 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 import argparse
-import cv2
-import cvTools
 import os
 import importlib
 import threading
 
+import cv2
+import cvTools
+
 import surgical_cnn_input as sci
 
-from matchers import Boundary
 from functools import partial
+from matchers import Boundary
 
 model = None
 
@@ -218,6 +219,8 @@ def cmdline_all(baseDir, start, end, asVideo, speed, save):
     else:
         image_names = os.listdir(baseDir)[start:end]
 
+    image_names.sort(key=lambda name: int(name[6:-4]))
+
     images = list(map(lambda a: baseDir + os.sep + a, image_names))
 
     cmdline_predict(images, save, asVideo, speed)
@@ -286,7 +289,7 @@ def main(unsused_argv):
     #Checkpoint config
     checkpointing_config = tf.estimator.RunConfig(
                                         save_checkpoints_steps=1000,
-                                        keep_checkpoint_max=10)
+                                        keep_checkpoint_max=5)
     #Create the Estimator
     hand_tracking_regressor = tf.estimator.Estimator(
             model_fn=model.cnn_model_fn, 
@@ -324,7 +327,7 @@ def train():
 def eval():
     hand_tracking_regressor = tf.estimator.Estimator(
             model_fn=model.cnn_model_fn, 
-            model_dir=sci.CHECKPOINT_DIR)
+            model_dir=model.CHECKPOINT_DIR)
     
     eval_results = hand_tracking_regressor.evaluate(input_fn=sci.get_eval_data)
 

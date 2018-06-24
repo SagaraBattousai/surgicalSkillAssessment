@@ -4,6 +4,7 @@
 *.swp
 *.npz
 HandTracking/data
+HandTracking/newData
 __pycache__
 HandTracking/__pycache__
 HandTracking/old/
@@ -12,3 +13,5 @@ TipClassififcation/backups
 TipClassififcation/data
 goodInputs.txt
 TipClassififcation/recImg.npz
+
+*_checkpoints

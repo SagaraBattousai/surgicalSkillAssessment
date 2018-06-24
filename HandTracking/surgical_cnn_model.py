@@ -16,7 +16,7 @@ def cnn_model_fn(features, labels, mode):
     #Convolutional Layer #1
     conv1 = tf.layers.conv2d(
             inputs=input_layer,
-            filters=32,
+            filters=64,
             kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu)
@@ -26,32 +26,32 @@ def cnn_model_fn(features, labels, mode):
             strides=4)
 
     #Normalization Layer #1
-    # norm1 = tf.nn.lrn(pool1,
-    #                   depth_radius=4,
-    #                   bias=1.0,
-    #                   alpha=0.001 / 9.0,
-    #                   beta=0.75,
-    #                   name="norm1")
+    norm1 = tf.nn.lrn(pool1,
+                      depth_radius=4,
+                      bias=1.0,
+                      alpha=0.001 / 9.0,
+                      beta=0.75,
+                      name="norm1")
 
     
     #Convolutional Layer #2 and Pooling Layer #2
     
     conv2 = tf.layers.conv2d(
-            inputs=pool1,
+            inputs=norm1,
             filters=64,
             kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu)
 
     #Normalization Layer #2
-    # norm2 = tf.nn.lrn(conv2,
-    #                   depth_radius=4,
-    #                   bias=1.0,
-    #                   alpha=0.001 / 9.0,
-    #                   beta=0.75,
-    #                   name="norm2")
+    norm2 = tf.nn.lrn(conv2,
+                      depth_radius=4,
+                      bias=1.0,
+                      alpha=0.001 / 9.0,
+                      beta=0.75,
+                      name="norm2")
     
-    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[5, 5],
+    pool2 = tf.layers.max_pooling2d(inputs=norm2, pool_size=[5, 5],
             strides=5)
 
 
@@ -61,15 +61,23 @@ def cnn_model_fn(features, labels, mode):
     dense = tf.layers.dense(inputs=pool2_flat, units=1024,
             activation=tf.nn.relu,
             use_bias=True,
-            name="dropout")
+            name="dropout1")
 
     dropout = tf.layers.Dropout(rate=0.4)
 
     dropout_output = dropout(dense,
             training=mode == tf.estimator.ModeKeys.TRAIN)
+    
+    dense2 = tf.layers.dense(inputs=dropout_output, units=512,
+            activation=tf.nn.relu,
+            use_bias=True,
+            name="dropout2")
+
+    dropout_output2 = dropout(dense2,
+            training=mode == tf.estimator.ModeKeys.TRAIN)
 
     # Logits Layer
-    logits_layer = tf.layers.dense(inputs=dropout_output, units=8)
+    logits_layer = tf.layers.dense(inputs=dropout_output2, units=8)
 
     logits = tf.reshape(logits_layer, [-1, 1, 8])
 
@@ -94,15 +102,15 @@ def cnn_model_fn(features, labels, mode):
 
     #Calculate Loss (for both TRAIN and EVAL mode)
 
-    loss = tf.losses.absolute_difference(labels, logits)
+    loss = tf.losses.mean_squared_error(labels, logits)
 
 
     #Configure the Training Op (for TRAIN mode)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
 
-        optimizer = tf.train.GradientDescentOptimizer(
-                learning_rate=0.001)
+        optimizer = tf.train.AdadeltaOptimizer(
+                learning_rate=1.0)
 
         train_op = optimizer.minimize(
                 loss=loss,
